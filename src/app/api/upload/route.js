@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { QdrantClient } from "@qdrant/js-client-rest";
+import "pdf-parse"; // Force Vercel to bundle pdf-parse
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
@@ -16,22 +18,38 @@ export async function POST(req) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = typeof file.arrayBuffer === 'function' 
+        ? await file.arrayBuffer() 
+        : await new Response(file).arrayBuffer();
+        
     const buffer = Buffer.from(arrayBuffer);
 
-    // Save temporary file
+    // Vercel's FormData parser sometimes parses files as Blobs instead of Files, causing file.name to be undefined.
+    let fileName = file.name;
+    if (!fileName) {
+      const mimeType = file.type || "";
+      if (mimeType.includes("pdf")) {
+        fileName = "uploaded_document.pdf";
+      } else if (mimeType.includes("csv")) {
+        fileName = "uploaded_document.csv";
+      } else {
+        fileName = "uploaded_document.txt";
+      }
+    }
+
+    // Save temporary file in /tmp (Vercel standard)
     const tempDir = os.tmpdir();
-    const filePath = path.join(tempDir, file.name);
+    const filePath = path.join(tempDir, fileName);
     await fs.writeFile(filePath, buffer);
 
     let docs = [];
 
-    if (file.name.endsWith(".pdf")) {
+    if (fileName.endsWith(".pdf")) {
       const loader = new PDFLoader(filePath);
       docs = await loader.load();
-    } else if (file.name.endsWith(".txt") || file.name.endsWith(".csv")) {
+    } else if (fileName.endsWith(".txt") || fileName.endsWith(".csv")) {
       const text = await fs.readFile(filePath, "utf-8");
-      docs = [{ pageContent: text, metadata: { source: file.name } }];
+      docs = [{ pageContent: text, metadata: { source: fileName } }];
     } else {
       return NextResponse.json({ error: "Unsupported file type. Please upload a PDF, TXT, or CSV." }, { status: 400 });
     }
@@ -52,7 +70,7 @@ export async function POST(req) {
         ...doc,
         metadata: {
           ...doc.metadata,
-          sourceFileName: file.name
+          sourceFileName: fileName
         }
       }
     });
@@ -86,6 +104,9 @@ export async function POST(req) {
 
     // Store in VectorDB (this automatically recreates the collection)
     await QdrantVectorStore.fromDocuments(docsWithMetadata, embeddings, qdrantConfig);
+
+    // Cleanup temp file
+    await fs.unlink(filePath).catch(console.error);
 
     return NextResponse.json({ 
         success: true, 
