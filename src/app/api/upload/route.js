@@ -9,6 +9,8 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 
+export const maxDuration = 60; // Prevent Vercel 504 timeouts (increases limit to 60s)
+
 export async function POST(req) {
   try {
     const formData = await req.formData();
