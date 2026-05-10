@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { QdrantClient } from "@qdrant/js-client-rest";
-import "pdf-parse"; // Force Vercel to bundle pdf-parse
-import * as fs from "fs/promises";
-import * as path from "path";
-import * as os from "os";
+import { extractText, getDocumentProxy } from "unpdf";
 
-export const maxDuration = 60; // Prevent Vercel 504 timeouts (increases limit to 60s)
+export const maxDuration = 60; // Prevent Vercel 504 timeouts (especially for larger files)
 
 export async function POST(req) {
   try {
@@ -20,13 +16,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const arrayBuffer = typeof file.arrayBuffer === 'function' 
-        ? await file.arrayBuffer() 
-        : await new Response(file).arrayBuffer();
-        
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Vercel's FormData parser sometimes parses files as Blobs instead of Files, causing file.name to be undefined.
+    // 1. Safe filename fallback (Vercel sometimes parses as a Blob, leaving file.name undefined)
     let fileName = file.name;
     if (!fileName) {
       const mimeType = file.type || "";
@@ -39,26 +29,30 @@ export async function POST(req) {
       }
     }
 
-    // Save temporary file in /tmp (Vercel standard)
-    const tempDir = os.tmpdir();
-    const filePath = path.join(tempDir, fileName);
-    await fs.writeFile(filePath, buffer);
+    // 2. Safe arrayBuffer extraction (Vercel sometimes lacks the native method on polyfilled files)
+    const arrayBuffer = typeof file.arrayBuffer === "function" 
+      ? await file.arrayBuffer() 
+      : await new Response(file).arrayBuffer();
+        
+    const buffer = Buffer.from(arrayBuffer);
 
     let docs = [];
 
+    // 3. 100% In-Memory Parsing (No disk-writes or fs-I/O whatsoever)
     if (fileName.endsWith(".pdf")) {
-      const loader = new PDFLoader(filePath);
-      docs = await loader.load();
+      // In-memory pure-JS PDF text extraction using unpdf (Vercel-safe)
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const { text } = await extractText(pdf, { mergePages: true });
+      docs = [{ pageContent: text, metadata: { source: fileName } }];
     } else if (fileName.endsWith(".txt") || fileName.endsWith(".csv")) {
-      const text = await fs.readFile(filePath, "utf-8");
+      // In-memory text/csv decoding
+      const text = buffer.toString("utf-8");
       docs = [{ pageContent: text, metadata: { source: fileName } }];
     } else {
       return NextResponse.json({ error: "Unsupported file type. Please upload a PDF, TXT, or CSV." }, { status: 400 });
     }
 
-    // Chunking: Implementation of a chunking strategy
-    // We use RecursiveCharacterTextSplitter to split the document into smaller, semantically meaningful chunks.
-    // chunkOverlap ensures context isn't lost between consecutive chunks.
+    // 4. In-Memory Semantic Chunking
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
       chunkOverlap: 200,
@@ -66,7 +60,7 @@ export async function POST(req) {
     
     const splitDocs = await textSplitter.splitDocuments(docs);
 
-    // Add some metadata to the chunks
+    // Tag chunks with source filename
     const docsWithMetadata = splitDocs.map(doc => {
       return {
         ...doc,
@@ -74,10 +68,10 @@ export async function POST(req) {
           ...doc.metadata,
           sourceFileName: fileName
         }
-      }
+      };
     });
 
-    // Embeddings
+    // 5. Generate Embeddings using Gemini Gen 2 model
     const embeddings = new GoogleGenerativeAIEmbeddings({
       model: "gemini-embedding-2", 
     });
@@ -92,10 +86,10 @@ export async function POST(req) {
     };
 
     if (apiKey) {
-        qdrantConfig.apiKey = apiKey;
+      qdrantConfig.apiKey = apiKey;
     }
 
-    // Clear previous context
+    // 6. Clear Previous Context (Explicitly drop & recreate the collection)
     const client = new QdrantClient({ url, apiKey });
     try {
       await client.deleteCollection(collectionName);
@@ -104,11 +98,8 @@ export async function POST(req) {
       console.log("No existing collection to delete or error deleting:", e.message);
     }
 
-    // Store in VectorDB (this automatically recreates the collection)
+    // 7. Store in VectorDB
     await QdrantVectorStore.fromDocuments(docsWithMetadata, embeddings, qdrantConfig);
-
-    // Cleanup temp file
-    await fs.unlink(filePath).catch(console.error);
 
     return NextResponse.json({ 
         success: true, 
@@ -118,6 +109,6 @@ export async function POST(req) {
 
   } catch (error) {
     console.error("Upload error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message, stack: error.stack }, { status: 500 });
   }
 }
