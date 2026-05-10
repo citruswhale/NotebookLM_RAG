@@ -1,0 +1,325 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  padding: 1.5rem;
+  gap: 1.5rem;
+  background: var(--background);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  background: var(--foreground);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--foreground);
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1.5rem;
+  flex: 1;
+  min-height: 0; /* Important for preventing flex children from overflowing */
+}
+
+@media (max-width: 768px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+}
+
+/* Upload Panel */
+.uploadPanel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto; /* Just in case contents get too tall */
+}
+
+.panelTitle {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.uploadZone {
+  border: 1px dashed var(--panel-border);
+  border-radius: 8px;
+  padding: 2rem 1rem;
+  text-align: center;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.uploadZone:hover {
+  border-color: #555;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.uploadIcon {
+  color: var(--muted);
+}
+
+.uploadButton {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.uploadButton:hover {
+  background: var(--primary-hover);
+}
+
+.uploadButton:disabled {
+  background: var(--panel-border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.fileList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fileItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--background);
+  border: 1px solid var(--panel-border);
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.fileItemIcon {
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+.fileName {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--foreground);
+  word-break: break-all;
+}
+
+.fileMeta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+/* Chat Panel */
+.chatPanel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.chatHistory {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  scroll-behavior: smooth;
+}
+
+.message {
+  display: flex;
+  gap: 1.25rem;
+  max-width: 90%;
+}
+
+.message.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid #333;
+}
+
+.user .avatar {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.bot .avatar {
+  background: #fff;
+  color: #000;
+}
+
+.messageContent {
+  padding: 0;
+  line-height: 1.6;
+  font-size: 0.95rem;
+  color: var(--foreground);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.user .messageContent {
+  background: var(--user-msg-bg);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border-top-right-radius: 2px;
+}
+
+.bot .messageContent {
+  padding-top: 0.25rem; /* align with avatar visually */
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  text-align: center;
+  gap: 1rem;
+}
+
+.inputAreaWrapper {
+  padding: 1.5rem 2rem;
+  background: linear-gradient(to bottom, transparent 0%, var(--panel-bg) 20%);
+}
+
+.inputArea {
+  display: flex;
+  gap: 0.75rem;
+  background: var(--background);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 0.5rem;
+  transition: border-color 0.2s ease;
+  align-items: flex-end;
+}
+
+.inputArea:focus-within {
+  border-color: #555;
+}
+
+.input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0.75rem 1rem;
+  color: var(--foreground);
+  outline: none;
+  resize: none;
+  font-size: 0.95rem;
+  max-height: 150px;
+  min-height: 24px;
+}
+
+.input::placeholder {
+  color: #666;
+}
+
+.sendButton {
+  background: #fff;
+  color: #000;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-bottom: 0.25rem;
+  margin-right: 0.25rem;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.sendButton:disabled {
+  background: var(--panel-border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.sources {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.sourceLabel {
+  font-size: 0.75rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sourceTag {
+  font-size: 0.75rem;
+  background: var(--background);
+  border: 1px solid var(--panel-border);
+  padding: 0.2rem 0.6rem;
+  border-radius: 100px;
+  color: #a1a1aa;
+}
