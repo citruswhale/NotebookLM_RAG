@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
@@ -87,9 +86,6 @@ export async function POST(req) {
 
     // Store in VectorDB (this automatically recreates the collection)
     await QdrantVectorStore.fromDocuments(docsWithMetadata, embeddings, qdrantConfig);
-
-    // Cleanup temp file
-    await fs.unlink(filePath).catch(console.error);
 
     return NextResponse.json({ 
         success: true, 
