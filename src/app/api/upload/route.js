@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { extractText, getDocumentProxy } from "unpdf";
+import { getEmbeddings } from "@/lib/providers";
+import { classifyError } from "@/lib/errors";
 
 export const maxDuration = 60; // Prevent Vercel 504 timeouts (especially for larger files)
 
@@ -38,18 +39,36 @@ export async function POST(req) {
 
     let docs = [];
 
-    // 3. 100% In-Memory Parsing (No disk-writes or fs-I/O whatsoever)
-    if (fileName.endsWith(".pdf")) {
-      // In-memory pure-JS PDF text extraction using unpdf (Vercel-safe)
-      const pdf = await getDocumentProxy(new Uint8Array(buffer));
-      const { text } = await extractText(pdf, { mergePages: true });
-      docs = [{ pageContent: text, metadata: { source: fileName } }];
-    } else if (fileName.endsWith(".txt") || fileName.endsWith(".csv")) {
-      // In-memory text/csv decoding
-      const text = buffer.toString("utf-8");
-      docs = [{ pageContent: text, metadata: { source: fileName } }];
-    } else {
-      return NextResponse.json({ error: "Unsupported file type. Please upload a PDF, TXT, or CSV." }, { status: 400 });
+    // 3. 100% In-Memory Parsing (No disk-writes or fs-I/O whatsoever).
+    // Parsing failures are a FILE problem (corrupt/locked PDF), distinct from a
+    // later AI-service problem — so we report them with their own clear message.
+    try {
+      if (fileName.endsWith(".pdf")) {
+        // In-memory pure-JS PDF text extraction using unpdf (Vercel-safe)
+        const pdf = await getDocumentProxy(new Uint8Array(buffer));
+        const { text } = await extractText(pdf, { mergePages: true });
+        docs = [{ pageContent: text, metadata: { source: fileName } }];
+      } else if (fileName.endsWith(".txt") || fileName.endsWith(".csv")) {
+        // In-memory text/csv decoding
+        const text = buffer.toString("utf-8");
+        docs = [{ pageContent: text, metadata: { source: fileName } }];
+      } else {
+        return NextResponse.json({ error: "Unsupported file type. Please upload a PDF, TXT, or CSV." }, { status: 400 });
+      }
+    } catch (parseErr) {
+      console.error("File parse error:", parseErr);
+      return NextResponse.json(
+        { error: "We couldn't read that file. It may be corrupted, password-protected, or not a valid PDF/TXT/CSV." },
+        { status: 422 }
+      );
+    }
+
+    // Guard against empty / image-only documents (no extractable text).
+    if (!docs.length || !docs[0].pageContent || !docs[0].pageContent.trim()) {
+      return NextResponse.json(
+        { error: "No readable text was found in this file. If it's a scanned PDF, it may contain only images." },
+        { status: 422 }
+      );
     }
 
     // 4. In-Memory Semantic Chunking
@@ -71,10 +90,9 @@ export async function POST(req) {
       };
     });
 
-    // 5. Generate Embeddings using Gemini Gen 2 model
-    const embeddings = new GoogleGenerativeAIEmbeddings({
-      model: "gemini-embedding-2", 
-    });
+    // 5. Generate Embeddings (Gemini primary / OpenAI backup — see src/lib/providers.js).
+    // MUST be the same provider used at query time so the vector spaces match.
+    const embeddings = getEmbeddings();
 
     const url = process.env.QDRANT_URL || "http://localhost:6333";
     const apiKey = process.env.QDRANT_API_KEY;
@@ -108,7 +126,11 @@ export async function POST(req) {
     });
 
   } catch (error) {
+    // Reaches here mainly for embedding/vector-store failures (e.g. a 429 rate
+    // limit while embedding chunks). Classify so the user sees the REAL cause —
+    // not a generic "upload failed" — and never leak stack traces to the client.
     console.error("Upload error:", error);
-    return NextResponse.json({ error: error.message, stack: error.stack }, { status: 500 });
+    const { status, message } = classifyError(error);
+    return NextResponse.json({ error: message }, { status });
   }
 }

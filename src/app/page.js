@@ -100,7 +100,7 @@ export default function Home() {
           },
         ]);
       } else {
-        alert("Upload failed: " + data.error);
+        alert(data.error || "Upload failed. Please try again.");
       }
     } catch (error) {
       console.error("Upload error:", error);
@@ -134,7 +134,7 @@ export default function Home() {
       } else {
         setMessages((prev) => [
           ...prev,
-          { role: "bot", content: "Sorry, I encountered an error: " + data.error },
+          { role: "bot", content: data.error || "Sorry, something went wrong. Please try again." },
         ]);
       }
     } catch (error) {
